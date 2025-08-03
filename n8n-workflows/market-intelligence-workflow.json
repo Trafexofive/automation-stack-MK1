@@ -1,1 +1,305 @@
-{ "nodes": [ { "parameters": { "schedule": "0 6 * * *", "workflowType": "market-intelligence" }, "name": "Market Intelligence", "type": "n8n-nodes-base.start" }, { "parameters": { "feedUrl": "http://example.com/rss", "outputFormat": "json" }, "name": "RSS Feed", "type": "n8n-nodes-base.rssFeed" }, { "parameters": { "action": "process", "service": "Crawl4AI" }, "name": "Crawl4AI Processing", "type": "n8n-nodes-base.crawl4AI" }, { "parameters": { "template": "LaTeX Report Template" }, "name": "LaTeX Report", "type": "n8n-nodes-base.latex" } ], "connections": { "start": { "main": [ [ { "node": "RSS Feed", "type": "main", "index": 0 } ] ] }, "RSS Feed": { "main": [ [ { "node": "Crawl4AI Processing", "type": "main", "index": 0 } ] ] }, "Crawl4AI Processing": { "main": [ [ { "node": "LaTeX Report", "type": "main", "index": 0 } ] ] } } }
+{
+    "name": "Market Intelligence Daily Workflow",
+    "nodes": [
+        {
+            "parameters": {
+                "rule": {
+                    "interval": [
+                        {
+                            "field": "cronExpression",
+                            "expression": "0 6 * * *"
+                        }
+                    ]
+                }
+            },
+            "id": "schedule-trigger",
+            "name": "Daily 6AM UTC",
+            "type": "n8n-nodes-base.scheduleTrigger",
+            "typeVersion": 1.1,
+            "position": [
+                240,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://miniflux:8080/v1/feeds",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "httpHeaderAuth": {
+                    "name": "X-Auth-Token",
+                    "value": "={{ $env.MINIFLUX_API_TOKEN }}"
+                },
+                "options": {}
+            },
+            "id": "miniflux-feeds",
+            "name": "Get RSS Feeds",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                460,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://miniflux:8080/v1/entries?status=unread&limit=50",
+                "authentication": "genericCredentialType",
+                "genericAuthType": "httpHeaderAuth",
+                "httpHeaderAuth": {
+                    "name": "X-Auth-Token",
+                    "value": "={{ $env.MINIFLUX_API_TOKEN }}"
+                },
+                "options": {}
+            },
+            "id": "miniflux-entries",
+            "name": "Get Unread Entries",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                680,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "functionCode": "// Filter for market intelligence relevant content\nconst marketKeywords = [\n  'market', 'competition', 'industry', 'trends', 'analysis',\n  'forecast', 'revenue', 'growth', 'strategy', 'business',\n  'enterprise', 'startup', 'funding', 'valuation', 'ipo'\n];\n\nconst entries = $input.all();\nconst filteredEntries = [];\n\nfor (const entry of entries) {\n  const content = (entry.json.title + ' ' + entry.json.content).toLowerCase();\n  const hasKeyword = marketKeywords.some(keyword => content.includes(keyword));\n  \n  if (hasKeyword) {\n    filteredEntries.push({\n      json: {\n        id: entry.json.id,\n        title: entry.json.title,\n        url: entry.json.url,\n        content: entry.json.content,\n        published_at: entry.json.published_at,\n        feed_title: entry.json.feed.title,\n        category: 'market_intelligence',\n        extracted_at: new Date().toISOString()\n      }\n    });\n  }\n}\n\nreturn filteredEntries;"
+            },
+            "id": "filter-market-content",
+            "name": "Filter Market Content",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                900,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://crawl4ai:8000/crawl",
+                "requestMethod": "POST",
+                "jsonParameters": true,
+                "options": {},
+                "bodyParametersJson": "{\n  \"urls\": [\"{{ $json.url }}\"],\n  \"extraction_strategy\": \"LLMExtractionStrategy\",\n  \"extraction_config\": {\n    \"provider\": \"openai\",\n    \"model\": \"gpt-3.5-turbo\",\n    \"schema\": {\n      \"type\": \"object\",\n      \"properties\": {\n        \"key_insights\": {\"type\": \"array\", \"items\": {\"type\": \"string\"}},\n        \"market_impact\": {\"type\": \"string\"},\n        \"competitive_implications\": {\"type\": \"string\"},\n        \"sentiment\": {\"type\": \"string\", \"enum\": [\"positive\", \"negative\", \"neutral\"]},\n        \"urgency\": {\"type\": \"string\", \"enum\": [\"low\", \"medium\", \"high\"]}\n      }\n    }\n  }\n}"
+            },
+            "id": "crawl4ai-analysis",
+            "name": "AI Content Analysis",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                1120,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://redis:6379",
+                "database": 0,
+                "operation": "set",
+                "key": "market_intel_{{ $json.id }}",
+                "value": "={{ JSON.stringify($json) }}",
+                "options": {
+                    "expire": 86400
+                }
+            },
+            "id": "redis-cache",
+            "name": "Cache Analysis",
+            "type": "n8n-nodes-base.redis",
+            "typeVersion": 1,
+            "position": [
+                1340,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "operation": "insert",
+                "schema": "public",
+                "table": "market_intelligence",
+                "columns": "entry_id, title, url, content, published_at, feed_title, ai_insights, market_impact, sentiment, urgency, extracted_at",
+                "additionalFields": {},
+                "options": {}
+            },
+            "id": "postgres-store",
+            "name": "Store in PostgreSQL",
+            "type": "n8n-nodes-base.postgres",
+            "typeVersion": 2.4,
+            "position": [
+                1560,
+                300
+            ],
+            "credentials": {
+                "postgres": {
+                    "id": "postgres-main",
+                    "name": "PostgreSQL Main"
+                }
+            }
+        },
+        {
+            "parameters": {
+                "functionCode": "// Generate LaTeX report\nconst entries = $input.all();\nconst today = new Date().toISOString().split('T')[0];\n\nlet latexContent = `\\\\documentclass{article}\n\\\\usepackage[utf8]{inputenc}\n\\\\usepackage{geometry}\n\\\\usepackage{hyperref}\n\\\\usepackage{xcolor}\n\n\\\\geometry{margin=1in}\n\\\\title{Market Intelligence Report - ${today}}\n\\\\author{Automation Stack MK1}\n\\\\date{${today}}\n\n\\\\begin{document}\n\\\\maketitle\n\n\\\\section{Executive Summary}\nThis report contains ${entries.length} market intelligence insights collected from RSS feeds and analyzed using AI.\n\n\\\\section{Key Insights}\n`;\n\nentries.forEach((entry, index) => {\n  const data = entry.json;\n  latexContent += `\n\\\\subsection{${data.title.replace(/[&%$#_{}]/g, '\\\\$&')}}\n\\\\textbf{Source:} \\\\href{${data.url}}{${data.feed_title}}\\\\\\\\  \n\\\\textbf{Published:} ${new Date(data.published_at).toLocaleDateString()}\\\\\\\\  \n\\\\textbf{Sentiment:} ${data.ai_analysis?.sentiment || 'N/A'}\\\\\\\\  \n\\\\textbf{Urgency:} ${data.ai_analysis?.urgency || 'N/A'}\n\n\\\\textbf{Market Impact:}\n${(data.ai_analysis?.market_impact || 'No analysis available').replace(/[&%$#_{}]/g, '\\\\$&')}\n\n\\\\textbf{Key Insights:}\n\\\\begin{itemize}\n`;\n  \n  if (data.ai_analysis?.key_insights) {\n    data.ai_analysis.key_insights.forEach(insight => {\n      latexContent += `\\\\item ${insight.replace(/[&%$#_{}]/g, '\\\\$&')}\\n`;\n    });\n  }\n  \n  latexContent += `\\\\end{itemize}\n`;\n});\n\nlatexContent += `\n\\\\section{Summary Statistics}\n\\\\begin{itemize}\n\\\\item Total articles analyzed: ${entries.length}\n\\\\item High urgency items: ${entries.filter(e => e.json.ai_analysis?.urgency === 'high').length}\n\\\\item Positive sentiment: ${entries.filter(e => e.json.ai_analysis?.sentiment === 'positive').length}\n\\\\item Negative sentiment: ${entries.filter(e => e.json.ai_analysis?.sentiment === 'negative').length}\n\\\\end{itemize}\n\n\\\\end{document}`;\n\nreturn [{\n  json: {\n    latex_content: latexContent,\n    report_date: today,\n    total_entries: entries.length\n  }\n}];"
+            },
+            "id": "generate-latex",
+            "name": "Generate LaTeX Report",
+            "type": "n8n-nodes-base.function",
+            "typeVersion": 1,
+            "position": [
+                1780,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://latex-service:8080/compile",
+                "requestMethod": "POST",
+                "jsonParameters": true,
+                "options": {},
+                "bodyParametersJson": "{\n  \"latex_content\": \"{{ $json.latex_content }}\",\n  \"filename\": \"market_intelligence_{{ $json.report_date }}\"\n}"
+            },
+            "id": "compile-pdf",
+            "name": "Compile PDF Report",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                2000,
+                300
+            ]
+        },
+        {
+            "parameters": {
+                "url": "http://notification-service:8080/webhook/completion",
+                "requestMethod": "POST",
+                "jsonParameters": true,
+                "options": {},
+                "bodyParametersJson": "{\n  \"workflow\": \"market-intelligence\",\n  \"status\": \"completed\",\n  \"timestamp\": \"{{ new Date().toISOString() }}\",\n  \"report_url\": \"{{ $json.pdf_url }}\",\n  \"entries_processed\": \"{{ $('Generate LaTeX Report').item.json.total_entries }}\"\n}"
+            },
+            "id": "notify-completion",
+            "name": "Notify Completion",
+            "type": "n8n-nodes-base.httpRequest",
+            "typeVersion": 4.1,
+            "position": [
+                2220,
+                300
+            ]
+        }
+    ],
+    "connections": {
+        "Daily 6AM UTC": {
+            "main": [
+                [
+                    {
+                        "node": "Get RSS Feeds",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get RSS Feeds": {
+            "main": [
+                [
+                    {
+                        "node": "Get Unread Entries",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Get Unread Entries": {
+            "main": [
+                [
+                    {
+                        "node": "Filter Market Content",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Filter Market Content": {
+            "main": [
+                [
+                    {
+                        "node": "AI Content Analysis",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "AI Content Analysis": {
+            "main": [
+                [
+                    {
+                        "node": "Cache Analysis",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Cache Analysis": {
+            "main": [
+                [
+                    {
+                        "node": "Store in PostgreSQL",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Store in PostgreSQL": {
+            "main": [
+                [
+                    {
+                        "node": "Generate LaTeX Report",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Generate LaTeX Report": {
+            "main": [
+                [
+                    {
+                        "node": "Compile PDF Report",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        },
+        "Compile PDF Report": {
+            "main": [
+                [
+                    {
+                        "node": "Notify Completion",
+                        "type": "main",
+                        "index": 0
+                    }
+                ]
+            ]
+        }
+    },
+    "settings": {
+        "errorWorkflow": {
+            "id": "error-handler"
+        },
+        "timezone": "UTC"
+    },
+    "staticData": {},
+    "tags": [
+        {
+            "createdAt": "2025-08-03T23:30:14.000Z",
+            "updatedAt": "2025-08-03T23:30:14.000Z",
+            "id": "market-intelligence",
+            "name": "market-intelligence"
+        }
+    ],
+    "triggerCount": 1,
+    "updatedAt": "2025-08-03T23:30:14.000Z",
+    "versionId": "1"
+}
