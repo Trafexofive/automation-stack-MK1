@@ -103,7 +103,7 @@ services:
       - "8001:8000"
     environment:
       - DATABASE_URL=sqlite:///app/scraperr.db
-      - REDIS_URL=redis://redis:6379
+      - REDIS_URL=redis://:${REDIS_PASSWORD:-your-default-password}@redis:6379
     volumes:
       - scraperr_data:/app/data
     depends_on:
@@ -126,6 +126,19 @@ services:
     networks:
       - automation_network
 
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    restart: unless-stopped
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - automation_network
+
 volumes:
   n8n_data:
     name: n8n_data
@@ -140,6 +153,17 @@ volumes:
   scrapper_data:
     name: scrapper_data
     
+  reverse-proxy:
+    image: nginx:latest
+    container_name: reverse-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./proxy.conf:/etc/nginx/conf.d/default.conf
+    networks:
+      - automation_network
+
 networks:
   automation_network:
     driver: bridge

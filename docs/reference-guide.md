@@ -500,6 +500,7 @@ SCRAPPER_DOMAIN=scrapper.yourdomain.com
 N8N_DB_PASS=pass
 MINIFLUX_PASS=miniflux
 MINIFLUX_ADMIN_PASS=admin123
+REDIS_PASSWORD=your-default-password
 
 # API Tokens
 CRAWL4AI_TOKEN=your-secret-token
