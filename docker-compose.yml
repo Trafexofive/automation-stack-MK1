@@ -1,0 +1,145 @@
+services:
+  # Your existing n8n setup (keep as-is)
+  n8n:
+    image: n8nio/n8n:latest
+    container_name: n8n
+    restart: always
+    ports:
+      - "5678:5678"
+    environment:
+      - N8N_PORT=5678
+      - NODE_ENV=production
+      - N8N_PROTOCOL=http
+      - DB_TYPE=postgresdb
+      - DB_POSTGRESDB_HOST=postgres
+      - DB_POSTGRESDB_PORT=5432
+      - DB_POSTGRESDB_DATABASE=n8n
+      - DB_POSTGRESDB_USER=n8n
+      - DB_POSTGRESDB_PASSWORD=${N8N_DB_PASS:-pass}
+      - EXECUTIONS_PROCESS=main
+      - EXECUTIONS_MODE=regular
+      - GENERIC_TIMEZONE=UTC
+      - N8N_SECURE_COOKIE=false
+      - WEBHOOK_URL=https://${N8N_DOMAIN:-n8n.yourdomain.com}/
+    volumes:
+      - n8n_data:/home/node/.n8n
+    depends_on:
+      - postgres
+    networks:
+      - automation_network
+
+  # Your existing postgres
+  postgres:
+    image: postgres:15
+    container_name: postgres
+    restart: always
+    environment:
+      - POSTGRES_DB=n8n
+      - POSTGRES_USER=n8n
+      - POSTGRES_PASSWORD=${N8N_DB_PASS:-pass}
+      - MINIFLUX_PASS=${MINIFLUX_PASS:-miniflux}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d
+    networks:
+      - automation_network
+    labels:
+      - "traefik.enable=false"
+
+  # Redis for caching/queuing data aggregation
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    networks:
+      - automation_network
+    labels:
+      - "traefik.enable=false"
+
+  # RSS/Feed aggregator
+  miniflux:
+    image: miniflux/miniflux:latest
+    container_name: miniflux
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgres://miniflux:${MINIFLUX_PASS:-miniflux}@postgres/miniflux?sslmode=disable
+      - RUN_MIGRATIONS=1
+      - CREATE_ADMIN=1
+      - ADMIN_USERNAME=admin
+      - ADMIN_PASSWORD=${MINIFLUX_ADMIN_PASS:-admin123}
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+    networks:
+      - automation_network
+
+  # Crawl4AI - AI-powered web scraper (trending #1 on GitHub)
+  crawl4ai:
+    image: unclecode/crawl4ai:latest
+    container_name: crawl4ai
+    restart: unless-stopped
+    ports:
+      - "11235:11235"  # API server
+    environment:
+      - CRAWL4AI_API_TOKEN=${CRAWL4AI_TOKEN:-your-secret-token}
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - crawl4ai_data:/app/data
+    depends_on:
+      - redis
+    networks:
+      - automation_network
+
+  # Scraperr - Self-hosted webscraper with web UI
+  scraperr:
+    image: jpyles0524/scraperr:latest
+    container_name: scraperr
+    restart: unless-stopped
+    ports:
+      - "8001:8000"
+    environment:
+      - DATABASE_URL=sqlite:///app/scraperr.db
+      - REDIS_URL=redis://redis:6379
+    volumes:
+      - scraperr_data:/app/data
+    depends_on:
+      - redis
+    networks:
+      - automation_network
+    command: ["yarn", "start"]
+
+  # Scrapper - REST API scraper with headless browser
+  scrapper:
+    image: amerkurev/scrapper:latest
+    container_name: scrapper
+    restart: unless-stopped
+    ports:
+      - "3002:3000"
+    environment:
+      - NODE_ENV=production
+    volumes:
+      - scrapper_data:/app/data
+    networks:
+      - automation_network
+
+volumes:
+  n8n_data:
+    name: n8n_data
+  postgres_data:
+    name: postgres_data
+  redis_data:
+    name: redis_data
+  crawl4ai_data:
+    name: crawl4ai_data
+  scraperr_data:
+    name: scraperr_data
+  scrapper_data:
+    name: scrapper_data
+    
+networks:
+  automation_network:
+    driver: bridge
