@@ -20,7 +20,7 @@ services:
       - EXECUTIONS_MODE=regular
       - GENERIC_TIMEZONE=UTC
       - N8N_SECURE_COOKIE=false
-      - WEBHOOK_URL=https://${N8N_DOMAIN:-n8n.yourdomain.com}/
+      - WEBHOOK_URL=https://${N8N_DOMAIN:-n8n.assisteo.ooguy.com}/
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
