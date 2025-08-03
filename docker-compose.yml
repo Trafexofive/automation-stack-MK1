@@ -126,30 +126,6 @@ services:
     networks:
       - automation_network
 
-  portainer:
-    image: portainer/portainer-ce:latest
-    container_name: portainer
-    restart: unless-stopped
-    ports:
-      - "9000:9000"
-      - "9443:9443"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-      - portainer_data:/data
-    networks:
-      - automation_network
-
-  reverse-proxy:
-    image: nginx:latest
-    container_name: reverse-proxy
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - ./proxy.conf:/etc/nginx/conf.d/default.conf
-    networks:
-      - automation_network
-
 volumes:
   n8n_data:
     name: n8n_data
@@ -163,8 +139,6 @@ volumes:
     name: scraperr_data
   scrapper_data:
     name: scrapper_data
-  portainer_data:
-    name: portainer_data
 
 networks:
   automation_network:
