@@ -1,1 +1,451 @@
-{ "nodes": [ { "parameters": { "schedule": "0 6 * * *", "workflowType": "market-intelligence" }, "name": "Market Intelligence", "type": "n8n-nodes-base.start" }, { "parameters": { "feedUrl": "http://example.com/rss", "outputFormat": "json" }, "name": "RSS Feed", "type": "n8n-nodes-base.rssFeed" }, { "parameters": { "action": "process", "service": "Crawl4AI" }, "name": "Crawl4AI Processing", "type": "n8n-nodes-base.crawl4AI" }, { "parameters": { "template": "LaTeX Report Template" }, "name": "LaTeX Report", "type": "n8n-nodes-base.latex" } ], "connections": { "start": { "main": [ [ { "node": "RSS Feed", "type": "main", "index": 0 } ] ] }, "RSS Feed": { "main": [ [ { "node": "Crawl4AI Processing", "type": "main", "index": 0 } ] ] }, "Crawl4AI Processing": { "main": [ [ { "node": "LaTeX Report", "type": "main", "index": 0 } ] ] } } }
+{
+  "name": "Market Intelligence Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "cronExpression": "0 6 * * *"
+            }
+          ]
+        }
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789001",
+      "name": "Daily Trigger - 6AM UTC",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://miniflux:8080/v1/feeds",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "minifluxApi",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789002",
+      "name": "Get RSS Feeds from Miniflux",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.feeds.length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789003",
+      "name": "Check Feeds Available",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://miniflux:8080/v1/entries",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "minifluxApi",
+        "options": {
+          "timeout": 30000,
+          "qs": {
+            "status": "unread",
+            "limit": "100"
+          }
+        }
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789004",
+      "name": "Fetch Recent Articles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [900, 240]
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "articles",
+              "value": "={{ $json.entries.map(entry => ({ id: entry.id, title: entry.title, url: entry.url, content: entry.content, published_at: entry.published_at, feed_title: entry.feed.title })) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789005",
+      "name": "Process Article Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1120, 240]
+    },
+    {
+      "parameters": {
+        "url": "http://crawl4ai:11235/crawl",
+        "options": {
+          "timeout": 60000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"urls\": $json.articles.map(article => article.url), \"extraction_strategy\": \"llm\", \"extraction_prompt\": \"Extract key market insights, trends, and competitive intelligence from this content. Focus on business implications, market movements, and strategic information.\", \"chunking_strategy\": \"semantic\" } }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.CRAWL4AI_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789006",
+      "name": "Crawl4AI Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 240]
+    },
+    {
+      "parameters": {
+        "url": "http://redis:6379",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"command\": \"SET\", \"key\": `market_intelligence_${new Date().toISOString().split('T')[0]}`, \"value\": JSON.stringify($json), \"ttl\": 86400 } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789007",
+      "name": "Cache Analysis Results",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 240]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "value": "public"
+        },
+        "table": {
+          "value": "market_intelligence"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ new Date().toISOString().split('T')[0] }}",
+            "source_feeds": "={{ $json.articles.map(a => a.feed_title).join(', ') }}",
+            "article_count": "={{ $json.articles.length }}",
+            "analysis_data": "={{ JSON.stringify($('Crawl4AI Analysis').item.json) }}",
+            "key_insights": "={{ $('Crawl4AI Analysis').item.json.extracted_content || 'No insights extracted' }}",
+            "processed_at": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_feeds",
+              "displayName": "source_feeds",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "article_count",
+              "displayName": "article_count",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "analysis_data",
+              "displayName": "analysis_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "key_insights",
+              "displayName": "key_insights",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processed_at",
+              "displayName": "processed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789008",
+      "name": "Store in PostgreSQL",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [1780, 240],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "#!/bin/bash\n\n# Create LaTeX report\ncat > /tmp/market_report.tex << 'EOF'\n\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\usepackage{fancyhdr}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\geometry{margin=1in}\n\n\\title{Daily Market Intelligence Report}\n\\author{Automation Stack}\n\\date{{{ new Date().toLocaleDateString() }}}\n\n\\begin{document}\n\\maketitle\n\n\\section{Executive Summary}\nThis report contains market intelligence gathered on {{ new Date().toLocaleDateString() }} from {{ $('Process Article Data').item.json.articles.length }} articles across multiple RSS feeds.\n\n\\section{Key Insights}\n{{ $('Crawl4AI Analysis').item.json.extracted_content || 'No insights available' }}\n\n\\section{Data Sources}\n{{ $('Process Article Data').item.json.articles.map(a => a.feed_title).filter((value, index, self) => self.indexOf(value) === index).join(', ') }}\n\n\\section{Processing Details}\n\\begin{itemize}\n\\item Articles processed: {{ $('Process Article Data').item.json.articles.length }}\n\\item Analysis completed at: {{ new Date().toISOString() }}\n\\item Feeds monitored: {{ $('Process Article Data').item.json.articles.map(a => a.feed_title).filter((value, index, self) => self.indexOf(value) === index).length }}\n\\end{itemize}\n\n\\end{document}\nEOF\n\n# Compile LaTeX to PDF\npdflatex -output-directory=/tmp /tmp/market_report.tex\n\n# Output the result\necho \"Report generated: /tmp/market_report.pdf\"\nls -la /tmp/market_report.pdf"
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789009",
+      "name": "Generate LaTeX Report",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2000, 240]
+    },
+    {
+      "parameters": {
+        "message": "Market Intelligence workflow failed at step: {{ $node.name }}. Error: {{ $json.error.message }}",
+        "options": {}
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789010",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [900, 460]
+    },
+    {
+      "parameters": {
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789011",
+      "name": "Rate Limit Delay",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1120, 140]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "f7f7e8b0-1234-4321-8901-123456789012",
+      "name": "Check Analysis Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1560, 140]
+    }
+  ],
+  "connections": {
+    "Daily Trigger - 6AM UTC": {
+      "main": [
+        [
+          {
+            "node": "Get RSS Feeds from Miniflux",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get RSS Feeds from Miniflux": {
+      "main": [
+        [
+          {
+            "node": "Check Feeds Available",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Feeds Available": {
+      "main": [
+        [
+          {
+            "node": "Fetch Recent Articles",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Recent Articles": {
+      "main": [
+        [
+          {
+            "node": "Process Article Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process Article Data": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Delay": {
+      "main": [
+        [
+          {
+            "node": "Crawl4AI Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crawl4AI Analysis": {
+      "main": [
+        [
+          {
+            "node": "Check Analysis Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Analysis Success": {
+      "main": [
+        [
+          {
+            "node": "Cache Analysis Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Analysis Results": {
+      "main": [
+        [
+          {
+            "node": "Store in PostgreSQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store in PostgreSQL": {
+      "main": [
+        [
+          {
+            "node": "Generate LaTeX Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": {
+      "id": ""
+    }
+  },
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "market-intelligence-daily",
+  "tags": [
+    {
+      "id": "market-intelligence",
+      "name": "Market Intelligence"
+    },
+    {
+      "id": "automation",
+      "name": "Automation"
+    }
+  ]
+}

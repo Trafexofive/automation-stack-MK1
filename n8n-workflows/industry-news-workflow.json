@@ -1,0 +1,458 @@
+{
+  "name": "Industry News Aggregation Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "cronExpression": "0 10 * * *"
+            }
+          ]
+        }
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789001",
+      "name": "Daily Trigger - 10AM UTC",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://miniflux:8080/v1/feeds",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "minifluxApi",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789002",
+      "name": "Get All RSS Feeds",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://miniflux:8080/v1/entries",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "minifluxApi",
+        "options": {
+          "timeout": 45000,
+          "qs": {
+            "status": "unread",
+            "limit": "200",
+            "after": "={{ Math.floor(Date.now() / 1000) - 86400 }}"
+          }
+        }
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789003",
+      "name": "Fetch Latest News Articles",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Deduplicate articles based on title similarity and URL\nconst articles = $input.item.json.entries || [];\nconst uniqueArticles = [];\nconst seenTitles = new Set();\nconst seenUrls = new Set();\n\n// Function to normalize title for comparison\nfunction normalizeTitle(title) {\n  return title.toLowerCase()\n    .replace(/[^a-z0-9\\s]/g, '')\n    .replace(/\\s+/g, ' ')\n    .trim();\n}\n\n// Function to calculate title similarity\nfunction titleSimilarity(title1, title2) {\n  const norm1 = normalizeTitle(title1);\n  const norm2 = normalizeTitle(title2);\n  \n  if (norm1 === norm2) return 1;\n  \n  const words1 = norm1.split(' ');\n  const words2 = norm2.split(' ');\n  const intersection = words1.filter(word => words2.includes(word));\n  const union = [...new Set([...words1, ...words2])];\n  \n  return intersection.length / union.length;\n}\n\nfor (const article of articles) {\n  const normalizedTitle = normalizeTitle(article.title);\n  const url = article.url;\n  \n  // Skip if exact URL already seen\n  if (seenUrls.has(url)) continue;\n  \n  // Check for similar titles (threshold of 0.7)\n  let isDuplicate = false;\n  for (const seenTitle of seenTitles) {\n    if (titleSimilarity(normalizedTitle, seenTitle) > 0.7) {\n      isDuplicate = true;\n      break;\n    }\n  }\n  \n  if (!isDuplicate) {\n    uniqueArticles.push({\n      id: article.id,\n      title: article.title,\n      url: article.url,\n      content: article.content,\n      published_at: article.published_at,\n      feed_title: article.feed.title,\n      author: article.author || 'Unknown',\n      categories: article.categories || []\n    });\n    seenTitles.add(normalizedTitle);\n    seenUrls.add(url);\n  }\n}\n\nreturn { \n  unique_articles: uniqueArticles,\n  total_processed: articles.length,\n  duplicates_removed: articles.length - uniqueArticles.length\n};"
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789004",
+      "name": "Deduplicate Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Categorize articles by content analysis\nconst articles = $input.item.json.unique_articles || [];\nconst categorizedArticles = [];\n\n// Define category keywords\nconst categoryKeywords = {\n  'technology': ['tech', 'software', 'ai', 'artificial intelligence', 'machine learning', 'blockchain', 'cloud', 'cybersecurity', 'data', 'digital'],\n  'business': ['business', 'economy', 'market', 'finance', 'investment', 'startup', 'revenue', 'profit', 'corporate', 'enterprise'],\n  'product': ['product', 'feature', 'launch', 'release', 'update', 'version', 'beta', 'announcement'],\n  'industry': ['industry', 'sector', 'vertical', 'manufacturing', 'automotive', 'healthcare', 'education', 'retail'],\n  'research': ['research', 'study', 'report', 'analysis', 'findings', 'survey', 'data', 'statistics'],\n  'security': ['security', 'breach', 'vulnerability', 'hack', 'cyberattack', 'privacy', 'encryption'],\n  'regulatory': ['regulation', 'compliance', 'policy', 'law', 'legal', 'government', 'gdpr', 'privacy']\n};\n\n// Function to categorize article\nfunction categorizeArticle(article) {\n  const text = `${article.title} ${article.content}`.toLowerCase();\n  const scores = {};\n  \n  for (const [category, keywords] of Object.entries(categoryKeywords)) {\n    let score = 0;\n    for (const keyword of keywords) {\n      const matches = (text.match(new RegExp(keyword, 'g')) || []).length;\n      score += matches;\n    }\n    scores[category] = score;\n  }\n  \n  // Find category with highest score\n  const topCategory = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b);\n  const confidence = scores[topCategory] / Math.max(1, Object.values(scores).reduce((a, b) => a + b, 0));\n  \n  return {\n    primary_category: topCategory,\n    confidence: confidence,\n    all_scores: scores\n  };\n}\n\nfor (const article of articles) {\n  const categorization = categorizeArticle(article);\n  categorizedArticles.push({\n    ...article,\n    category: categorization.primary_category,\n    category_confidence: categorization.confidence,\n    category_scores: categorization.all_scores\n  });\n}\n\nreturn {\n  categorized_articles: categorizedArticles,\n  category_distribution: categorizedArticles.reduce((dist, article) => {\n    dist[article.category] = (dist[article.category] || 0) + 1;\n    return dist;\n  }, {})\n};"
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789005",
+      "name": "Categorize Content",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 300]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789006",
+      "name": "Rate Limit for Analysis",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1340, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://crawl4ai:11235/analyze",
+        "options": {
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"articles\": $json.categorized_articles.slice(0, 20).map(a => ({ title: a.title, content: a.content.substring(0, 2000), category: a.category })), \"analysis_type\": \"sentiment_and_trends\", \"extraction_prompt\": \"Analyze the sentiment (positive, negative, neutral) and identify key trends across these industry news articles. Provide insights on: 1) Overall industry sentiment, 2) Emerging trends, 3) Key topics, 4) Market implications, 5) Notable developments by category.\" } }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.CRAWL4AI_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789007",
+      "name": "Sentiment & Trend Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 300]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789008",
+      "name": "Validate Analysis Success",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://redis:6379",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"command\": \"SET\", \"key\": `industry_news_${new Date().toISOString().split('T')[0]}`, \"value\": JSON.stringify({ articles: $('Categorize Content').item.json.categorized_articles, analysis: $json, distribution: $('Categorize Content').item.json.category_distribution }), \"ttl\": 86400 } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789009",
+      "name": "Cache News Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 240]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "value": "public"
+        },
+        "table": {
+          "value": "industry_news"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ new Date().toISOString().split('T')[0] }}",
+            "total_articles": "={{ $('Categorize Content').item.json.categorized_articles.length }}",
+            "duplicates_removed": "={{ $('Deduplicate Content').item.json.duplicates_removed }}",
+            "category_distribution": "={{ JSON.stringify($('Categorize Content').item.json.category_distribution) }}",
+            "sentiment_analysis": "={{ JSON.stringify($('Sentiment & Trend Analysis').item.json) }}",
+            "trending_topics": "={{ $('Sentiment & Trend Analysis').item.json.trending_topics || 'No trends identified' }}",
+            "overall_sentiment": "={{ $('Sentiment & Trend Analysis').item.json.overall_sentiment || 'neutral' }}",
+            "key_insights": "={{ $('Sentiment & Trend Analysis').item.json.key_insights || 'No insights available' }}",
+            "source_feeds": "={{ $('Categorize Content').item.json.categorized_articles.map(a => a.feed_title).filter((value, index, self) => self.indexOf(value) === index).join(', ') }}",
+            "processed_at": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_articles",
+              "displayName": "total_articles",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "duplicates_removed",
+              "displayName": "duplicates_removed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "category_distribution",
+              "displayName": "category_distribution",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentiment_analysis",
+              "displayName": "sentiment_analysis",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "trending_topics",
+              "displayName": "trending_topics",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "overall_sentiment",
+              "displayName": "overall_sentiment",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "key_insights",
+              "displayName": "key_insights",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "source_feeds",
+              "displayName": "source_feeds",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processed_at",
+              "displayName": "processed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789010",
+      "name": "Store News Analysis",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2220, 240],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "#!/bin/bash\n\n# Create industry news LaTeX report\ncat > /tmp/industry_news_report.tex << 'EOF'\n\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\usepackage{fancyhdr}\n\\usepackage{longtable}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\usepackage{booktabs}\n\\usepackage{enumitem}\n\\geometry{margin=1in}\n\n\\title{Daily Industry News Digest}\n\\author{Automation Stack}\n\\date{{{ new Date().toLocaleDateString() }}}\n\n\\begin{document}\n\\maketitle\n\n\\section{Executive Summary}\nIndustry news analysis for {{ new Date().toLocaleDateString() }} covering {{ $('Categorize Content').item.json.categorized_articles.length }} unique articles from {{ $('Categorize Content').item.json.categorized_articles.map(a => a.feed_title).filter((value, index, self) => self.indexOf(value) === index).length }} news sources.\n\n\\section{Overall Sentiment}\n\\textbf{Industry Sentiment:} {{ $('Sentiment & Trend Analysis').item.json.overall_sentiment || 'Neutral' }}\n\n\\section{Category Distribution}\n\\begin{itemize}\n{{ Object.entries($('Categorize Content').item.json.category_distribution).map(([cat, count]) => `\\\\item \\\\textbf{${cat.charAt(0).toUpperCase() + cat.slice(1)}:} ${count} articles`).join('\\n') }}\n\\end{itemize}\n\n\\section{Key Insights & Trends}\n{{ $('Sentiment & Trend Analysis').item.json.key_insights || 'Analysis in progress' }}\n\n\\section{Trending Topics}\n{{ $('Sentiment & Trend Analysis').item.json.trending_topics || 'No specific trends identified' }}\n\n\\section{Content Processing}\n\\begin{itemize}\n\\item Total articles processed: {{ $('Deduplicate Content').item.json.total_processed }}\n\\item Unique articles after deduplication: {{ $('Categorize Content').item.json.categorized_articles.length }}\n\\item Duplicates removed: {{ $('Deduplicate Content').item.json.duplicates_removed }}\n\\item Analysis completed at: {{ new Date().toISOString() }}\n\\end{itemize}\n\n\\section{Source Feeds}\n\\begin{itemize}\n{{ $('Categorize Content').item.json.categorized_articles.map(a => a.feed_title).filter((value, index, self) => self.indexOf(value) === index).map(feed => `\\\\item ${feed}`).join('\\n') }}\n\\end{itemize}\n\n\\end{document}\nEOF\n\n# Compile LaTeX to PDF\npdflatex -output-directory=/tmp /tmp/industry_news_report.tex\n\necho \"Industry news report generated: /tmp/industry_news_report.pdf\"\nls -la /tmp/industry_news_report.pdf"
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789011",
+      "name": "Generate News Digest",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2440, 240]
+    },
+    {
+      "parameters": {
+        "message": "Industry News workflow failed at step: {{ $node.name }}. Error: {{ $json.error.message }}",
+        "options": {}
+      },
+      "id": "n7f7e8b0-1234-4321-8901-123456789012",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1780, 460]
+    }
+  ],
+  "connections": {
+    "Daily Trigger - 10AM UTC": {
+      "main": [
+        [
+          {
+            "node": "Get All RSS Feeds",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get All RSS Feeds": {
+      "main": [
+        [
+          {
+            "node": "Fetch Latest News Articles",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Latest News Articles": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Content": {
+      "main": [
+        [
+          {
+            "node": "Categorize Content",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Categorize Content": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit for Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit for Analysis": {
+      "main": [
+        [
+          {
+            "node": "Sentiment & Trend Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sentiment & Trend Analysis": {
+      "main": [
+        [
+          {
+            "node": "Validate Analysis Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Analysis Success": {
+      "main": [
+        [
+          {
+            "node": "Cache News Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache News Analysis": {
+      "main": [
+        [
+          {
+            "node": "Store News Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store News Analysis": {
+      "main": [
+        [
+          {
+            "node": "Generate News Digest",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": {
+      "id": ""
+    }
+  },
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "industry-news-aggregation",
+  "tags": [
+    {
+      "id": "industry-news",
+      "name": "Industry News"
+    },
+    {
+      "id": "automation",
+      "name": "Automation"
+    }
+  ]
+}

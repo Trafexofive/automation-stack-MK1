@@ -1,0 +1,481 @@
+{
+  "name": "Competitive Analysis Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "cronExpression": "0 8 * * *"
+            }
+          ]
+        }
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789001",
+      "name": "Daily Trigger - 8AM UTC",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "competitor_urls",
+              "value": "=['https://competitor1.com/pricing', 'https://competitor2.com/features', 'https://competitor3.com/products']"
+            },
+            {
+              "name": "target_selectors",
+              "value": "=['.pricing-table', '.feature-list', '.product-specs']"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789002",
+      "name": "Define Competitor URLs",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "http://scraperr:8000/api/scrape",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"urls\": $json.competitor_urls, \"selectors\": $json.target_selectors, \"options\": { \"waitFor\": 2000, \"screenshot\": true, \"fullPage\": false } } }}",
+        "options": {
+          "timeout": 60000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789003",
+      "name": "Scraperr Data Collection",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 280]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789004",
+      "name": "Rate Limit Between Services",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [900, 280]
+    },
+    {
+      "parameters": {
+        "url": "http://scrapper:3000/scrape",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"urls\": $('Define Competitor URLs').item.json.competitor_urls, \"options\": { \"headless\": true, \"extractText\": true, \"extractImages\": false } } }}",
+        "options": {
+          "timeout": 60000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789005",
+      "name": "Scrapper Additional Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1120, 280]
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "scraperr_data",
+              "value": "={{ $('Scraperr Data Collection').item.json }}"
+            },
+            {
+              "name": "scrapper_data",
+              "value": "={{ $json }}"
+            },
+            {
+              "name": "combined_text",
+              "value": "={{ [$('Scraperr Data Collection').item.json.extracted_text, $json.extracted_text].filter(Boolean).join(' ') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789006",
+      "name": "Merge Scraping Results",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [1340, 280]
+    },
+    {
+      "parameters": {
+        "url": "http://crawl4ai:11235/crawl",
+        "options": {
+          "timeout": 90000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": $json.combined_text, \"extraction_strategy\": \"llm\", \"extraction_prompt\": \"Analyze this competitive data for: 1) Pricing strategies and changes, 2) Feature comparisons, 3) Market positioning, 4) Product updates, 5) Competitive advantages/disadvantages. Provide structured analysis with actionable insights.\", \"chunking_strategy\": \"semantic\" } }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.CRAWL4AI_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789007",
+      "name": "Crawl4AI Competitive Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1560, 280]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789008",
+      "name": "Validate Analysis",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1780, 280]
+    },
+    {
+      "parameters": {
+        "url": "http://redis:6379",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"command\": \"SET\", \"key\": `competitive_analysis_${new Date().toISOString().split('T')[0]}`, \"value\": JSON.stringify({ analysis: $json, scraped_data: $('Merge Scraping Results').item.json }), \"ttl\": 86400 } }}",
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789009",
+      "name": "Cache Competition Data",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2000, 220]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "value": "public"
+        },
+        "table": {
+          "value": "competitive_analysis"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ new Date().toISOString().split('T')[0] }}",
+            "competitors_analyzed": "={{ $('Define Competitor URLs').item.json.competitor_urls.length }}",
+            "analysis_data": "={{ JSON.stringify($('Crawl4AI Competitive Analysis').item.json) }}",
+            "scraped_content": "={{ JSON.stringify($('Merge Scraping Results').item.json) }}",
+            "key_findings": "={{ $('Crawl4AI Competitive Analysis').item.json.extracted_content || 'No findings available' }}",
+            "pricing_insights": "={{ $('Crawl4AI Competitive Analysis').item.json.pricing_analysis || 'No pricing data' }}",
+            "feature_comparison": "={{ $('Crawl4AI Competitive Analysis').item.json.feature_analysis || 'No feature data' }}",
+            "processed_at": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "competitors_analyzed",
+              "displayName": "competitors_analyzed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "analysis_data",
+              "displayName": "analysis_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scraped_content",
+              "displayName": "scraped_content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "key_findings",
+              "displayName": "key_findings",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "pricing_insights",
+              "displayName": "pricing_insights",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "feature_comparison",
+              "displayName": "feature_comparison",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processed_at",
+              "displayName": "processed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789010",
+      "name": "Store Analysis in DB",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2220, 220],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "#!/bin/bash\n\n# Create competitive analysis LaTeX report\ncat > /tmp/competitive_report.tex << 'EOF'\n\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\usepackage{fancyhdr}\n\\usepackage{longtable}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\usepackage{booktabs}\n\\geometry{margin=1in}\n\n\\title{Daily Competitive Analysis Report}\n\\author{Automation Stack}\n\\date{{{ new Date().toLocaleDateString() }}}\n\n\\begin{document}\n\\maketitle\n\n\\section{Executive Summary}\nCompetitive analysis completed on {{ new Date().toLocaleDateString() }} covering {{ $('Define Competitor URLs').item.json.competitor_urls.length }} competitor sites.\n\n\\section{Key Findings}\n{{ $('Crawl4AI Competitive Analysis').item.json.extracted_content || 'Analysis pending' }}\n\n\\section{Pricing Analysis}\n{{ $('Crawl4AI Competitive Analysis').item.json.pricing_analysis || 'No pricing insights available' }}\n\n\\section{Feature Comparison}\n{{ $('Crawl4AI Competitive Analysis').item.json.feature_analysis || 'No feature comparison available' }}\n\n\\section{Data Sources}\n\\begin{itemize}\n{{ $('Define Competitor URLs').item.json.competitor_urls.map(url => `\\\\item ${url}`).join('\\n') }}\n\\end{itemize}\n\n\\section{Processing Details}\n\\begin{itemize}\n\\item Competitors analyzed: {{ $('Define Competitor URLs').item.json.competitor_urls.length }}\n\\item Analysis completed at: {{ new Date().toISOString() }}\n\\item Data sources: Scraperr + Scrapper + Crawl4AI\n\\end{itemize}\n\n\\end{document}\nEOF\n\n# Compile LaTeX to PDF\npdflatex -output-directory=/tmp /tmp/competitive_report.tex\n\necho \"Competitive analysis report generated: /tmp/competitive_report.pdf\"\nls -la /tmp/competitive_report.pdf"
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789011",
+      "name": "Generate Competitive Report",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [2440, 220]
+    },
+    {
+      "parameters": {
+        "message": "Competitive Analysis workflow failed at step: {{ $node.name }}. Error: {{ $json.error.message }}",
+        "options": {}
+      },
+      "id": "c7f7e8b0-1234-4321-8901-123456789012",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [1780, 440]
+    }
+  ],
+  "connections": {
+    "Daily Trigger - 8AM UTC": {
+      "main": [
+        [
+          {
+            "node": "Define Competitor URLs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define Competitor URLs": {
+      "main": [
+        [
+          {
+            "node": "Scraperr Data Collection",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scraperr Data Collection": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Between Services",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Between Services": {
+      "main": [
+        [
+          {
+            "node": "Scrapper Additional Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrapper Additional Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Scraping Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Scraping Results": {
+      "main": [
+        [
+          {
+            "node": "Crawl4AI Competitive Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Crawl4AI Competitive Analysis": {
+      "main": [
+        [
+          {
+            "node": "Validate Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Analysis": {
+      "main": [
+        [
+          {
+            "node": "Cache Competition Data",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Competition Data": {
+      "main": [
+        [
+          {
+            "node": "Store Analysis in DB",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Analysis in DB": {
+      "main": [
+        [
+          {
+            "node": "Generate Competitive Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": {
+      "id": ""
+    }
+  },
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "competitive-analysis-daily",
+  "tags": [
+    {
+      "id": "competitive-analysis",
+      "name": "Competitive Analysis"
+    },
+    {
+      "id": "automation",
+      "name": "Automation"
+    }
+  ]
+}

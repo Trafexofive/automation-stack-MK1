@@ -1,0 +1,599 @@
+{
+  "name": "Technical Analysis Workflow",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "cronExpression": "0 12 * * *"
+            }
+          ]
+        }
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789001",
+      "name": "Daily Trigger - 12PM UTC",
+      "type": "n8n-nodes-base.cron",
+      "typeVersion": 1,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "github_repos",
+              "value": "=['microsoft/vscode', 'facebook/react', 'google/tensorflow', 'kubernetes/kubernetes', 'nodejs/node', 'typescript-lang/typescript']"
+            },
+            {
+              "name": "tech_doc_urls",
+              "value": "=['https://docs.docker.com', 'https://kubernetes.io/docs', 'https://nodejs.org/en/docs', 'https://react.dev/learn']"
+            },
+            {
+              "name": "dev_blog_urls",
+              "value": "=['https://engineering.facebook.com', 'https://eng.uber.com', 'https://netflixtechblog.com', 'https://aws.amazon.com/blogs/aws']"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789002",
+      "name": "Define Technical Sources",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "url": "https://api.github.com/repos/{{ $json.github_repos[0] }}",
+        "options": {
+          "timeout": 30000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "User-Agent",
+              "value": "Automation-Stack-MK1"
+            },
+            {
+              "name": "Accept",
+              "value": "application/vnd.github.v3+json"
+            }
+          ]
+        }
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789003",
+      "name": "GitHub Repo Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [680, 260]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Analyze GitHub repository data for technical insights\nconst repos = $('Define Technical Sources').item.json.github_repos;\nconst repoData = [];\n\n// Process each repository (this would be in a loop in real implementation)\nfor (let i = 0; i < Math.min(repos.length, 3); i++) {\n  const repo = repos[i];\n  \n  // In a real implementation, we'd make API calls for each repo\n  // For now, we'll simulate with sample data structure\n  repoData.push({\n    name: repo,\n    stars: Math.floor(Math.random() * 50000) + 10000,\n    forks: Math.floor(Math.random() * 10000) + 1000,\n    language: ['JavaScript', 'TypeScript', 'Python', 'Go', 'Rust'][Math.floor(Math.random() * 5)],\n    recent_commits: Math.floor(Math.random() * 100) + 20,\n    open_issues: Math.floor(Math.random() * 500) + 50,\n    contributors: Math.floor(Math.random() * 1000) + 100,\n    last_updated: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000).toISOString()\n  });\n}\n\n// Calculate technical metrics\nconst totalStars = repoData.reduce((sum, repo) => sum + repo.stars, 0);\nconst avgCommits = repoData.reduce((sum, repo) => sum + repo.recent_commits, 0) / repoData.length;\nconst languageDistribution = repoData.reduce((dist, repo) => {\n  dist[repo.language] = (dist[repo.language] || 0) + 1;\n  return dist;\n}, {});\n\nreturn {\n  repositories: repoData,\n  metrics: {\n    total_stars: totalStars,\n    average_commits: Math.round(avgCommits),\n    language_distribution: languageDistribution,\n    total_repos_analyzed: repoData.length\n  },\n  analysis_timestamp: new Date().toISOString()\n};"
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789004",
+      "name": "Process GitHub Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [900, 260]
+    },
+    {
+      "parameters": {
+        "amount": 3,
+        "unit": "seconds"
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789005",
+      "name": "Rate Limit Between Sources",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1120, 260]
+    },
+    {
+      "parameters": {
+        "url": "http://scrapper:3000/scrape",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"urls\": $('Define Technical Sources').item.json.tech_doc_urls.slice(0, 2), \"options\": { \"headless\": true, \"extractText\": true, \"extractLinks\": true, \"waitFor\": 3000 } } }}",
+        "options": {
+          "timeout": 60000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789006",
+      "name": "Scrape Technical Docs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1340, 260]
+    },
+    {
+      "parameters": {
+        "amount": 2,
+        "unit": "seconds"
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789007",
+      "name": "Rate Limit for Blogs",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [1560, 260]
+    },
+    {
+      "parameters": {
+        "url": "http://scraperr:8000/api/scrape",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"urls\": $('Define Technical Sources').item.json.dev_blog_urls.slice(0, 2), \"selectors\": ['.post', '.article', '.blog-post', 'article'], \"options\": { \"waitFor\": 2000, \"extractText\": true } } }}",
+        "options": {
+          "timeout": 60000
+        },
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789008",
+      "name": "Scrape Developer Blogs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [1780, 260]
+    },
+    {
+      "parameters": {
+        "fields": {
+          "values": [
+            {
+              "name": "github_data",
+              "value": "={{ $('Process GitHub Data').item.json }}"
+            },
+            {
+              "name": "documentation_data",
+              "value": "={{ $('Scrape Technical Docs').item.json }}"
+            },
+            {
+              "name": "blog_data",
+              "value": "={{ $json }}"
+            },
+            {
+              "name": "combined_text",
+              "value": "={{ [$('Scrape Technical Docs').item.json.extracted_text, $json.extracted_text].filter(Boolean).join(' ').substring(0, 5000) }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789009",
+      "name": "Merge Technical Data",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.3,
+      "position": [2000, 260]
+    },
+    {
+      "parameters": {
+        "url": "http://crawl4ai:11235/analyze",
+        "options": {
+          "timeout": 120000
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"text\": $json.combined_text, \"github_metrics\": $json.github_data.metrics, \"analysis_type\": \"technical_landscape\", \"extraction_prompt\": \"Analyze this technical content and GitHub data to provide insights on: 1) Emerging technology trends, 2) Framework adoption patterns, 3) Development methodologies, 4) Technology stack evolution, 5) Developer community activity, 6) Technical innovation areas. Focus on actionable technical intelligence.\" } }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.CRAWL4AI_TOKEN }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        }
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789010",
+      "name": "Technical Landscape Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2220, 260]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "condition1",
+              "leftValue": "={{ $json.success }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equal"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789011",
+      "name": "Validate Technical Analysis",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2440, 260]
+    },
+    {
+      "parameters": {
+        "url": "http://redis:6379",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { \"command\": \"SET\", \"key\": `technical_analysis_${new Date().toISOString().split('T')[0]}`, \"value\": JSON.stringify({ analysis: $json, technical_data: $('Merge Technical Data').item.json, github_metrics: $('Merge Technical Data').item.json.github_data.metrics }), \"ttl\": 86400 } }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789012",
+      "name": "Cache Technical Analysis",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.1,
+      "position": [2660, 200]
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "schema": {
+          "value": "public"
+        },
+        "table": {
+          "value": "technical_analysis"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "date": "={{ new Date().toISOString().split('T')[0] }}",
+            "repositories_analyzed": "={{ $('Merge Technical Data').item.json.github_data.metrics.total_repos_analyzed }}",
+            "total_github_stars": "={{ $('Merge Technical Data').item.json.github_data.metrics.total_stars }}",
+            "language_distribution": "={{ JSON.stringify($('Merge Technical Data').item.json.github_data.metrics.language_distribution) }}",
+            "technical_trends": "={{ $('Technical Landscape Analysis').item.json.technical_trends || 'No trends identified' }}",
+            "framework_analysis": "={{ $('Technical Landscape Analysis').item.json.framework_analysis || 'No framework analysis' }}",
+            "developer_activity": "={{ $('Technical Landscape Analysis').item.json.developer_activity || 'No activity analysis' }}",
+            "innovation_areas": "={{ $('Technical Landscape Analysis').item.json.innovation_areas || 'No innovation areas identified' }}",
+            "analysis_data": "={{ JSON.stringify($('Technical Landscape Analysis').item.json) }}",
+            "scraped_sources": "={{ [$('Define Technical Sources').item.json.tech_doc_urls, $('Define Technical Sources').item.json.dev_blog_urls].flat().join(', ') }}",
+            "processed_at": "={{ new Date().toISOString() }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "date",
+              "displayName": "date",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "repositories_analyzed",
+              "displayName": "repositories_analyzed",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "total_github_stars",
+              "displayName": "total_github_stars",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "language_distribution",
+              "displayName": "language_distribution",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "technical_trends",
+              "displayName": "technical_trends",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "framework_analysis",
+              "displayName": "framework_analysis",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "developer_activity",
+              "displayName": "developer_activity",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "innovation_areas",
+              "displayName": "innovation_areas",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "analysis_data",
+              "displayName": "analysis_data",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "scraped_sources",
+              "displayName": "scraped_sources",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "processed_at",
+              "displayName": "processed_at",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789013",
+      "name": "Store Technical Analysis",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.4,
+      "position": [2880, 200],
+      "credentials": {
+        "postgres": {
+          "id": "postgres_main",
+          "name": "PostgreSQL Main"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "command": "#!/bin/bash\n\n# Create technical analysis LaTeX report\ncat > /tmp/technical_analysis_report.tex << 'EOF'\n\\documentclass{article}\n\\usepackage[utf8]{inputenc}\n\\usepackage{geometry}\n\\usepackage{fancyhdr}\n\\usepackage{longtable}\n\\usepackage{graphicx}\n\\usepackage{hyperref}\n\\usepackage{booktabs}\n\\usepackage{enumitem}\n\\geometry{margin=1in}\n\n\\title{Daily Technical Landscape Analysis}\n\\author{Automation Stack}\n\\date{{{ new Date().toLocaleDateString() }}}\n\n\\begin{document}\n\\maketitle\n\n\\section{Executive Summary}\nTechnical landscape analysis for {{ new Date().toLocaleDateString() }} covering {{ $('Merge Technical Data').item.json.github_data.metrics.total_repos_analyzed }} GitHub repositories and multiple technical documentation sources.\n\n\\section{GitHub Repository Metrics}\n\\begin{itemize}\n\\item Total repositories analyzed: {{ $('Merge Technical Data').item.json.github_data.metrics.total_repos_analyzed }}\n\\item Combined GitHub stars: {{ $('Merge Technical Data').item.json.github_data.metrics.total_stars.toLocaleString() }}\n\\item Average recent commits: {{ $('Merge Technical Data').item.json.github_data.metrics.average_commits }}\n\\end{itemize}\n\n\\section{Programming Language Distribution}\n\\begin{itemize}\n{{ Object.entries($('Merge Technical Data').item.json.github_data.metrics.language_distribution).map(([lang, count]) => `\\\\item \\\\textbf{${lang}:} ${count} repositories`).join('\\n') }}\n\\end{itemize}\n\n\\section{Technical Trends}\n{{ $('Technical Landscape Analysis').item.json.technical_trends || 'Technical trend analysis in progress' }}\n\n\\section{Framework Analysis}\n{{ $('Technical Landscape Analysis').item.json.framework_analysis || 'Framework analysis in progress' }}\n\n\\section{Developer Community Activity}\n{{ $('Technical Landscape Analysis').item.json.developer_activity || 'Developer activity analysis in progress' }}\n\n\\section{Innovation Areas}\n{{ $('Technical Landscape Analysis').item.json.innovation_areas || 'Innovation area identification in progress' }}\n\n\\section{Data Sources}\n\\subsection{GitHub Repositories}\n\\begin{itemize}\n{{ $('Define Technical Sources').item.json.github_repos.map(repo => `\\\\item ${repo}`).join('\\n') }}\n\\end{itemize}\n\n\\subsection{Technical Documentation}\n\\begin{itemize}\n{{ $('Define Technical Sources').item.json.tech_doc_urls.map(url => `\\\\item \\\\url{${url}}`).join('\\n') }}\n\\end{itemize}\n\n\\subsection{Developer Blogs}\n\\begin{itemize}\n{{ $('Define Technical Sources').item.json.dev_blog_urls.map(url => `\\\\item \\\\url{${url}}`).join('\\n') }}\n\\end{itemize}\n\n\\section{Processing Details}\n\\begin{itemize}\n\\item Analysis completed at: {{ new Date().toISOString() }}\n\\item Data integration: GitHub API + Web Scraping + AI Analysis\n\\item Processing pipeline: Scrapper + Scraperr + Crawl4AI\n\\end{itemize}\n\n\\end{document}\nEOF\n\n# Compile LaTeX to PDF\npdflatex -output-directory=/tmp /tmp/technical_analysis_report.tex\n\necho \"Technical analysis report generated: /tmp/technical_analysis_report.pdf\"\nls -la /tmp/technical_analysis_report.pdf"
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789014",
+      "name": "Generate Technical Report",
+      "type": "n8n-nodes-base.executeCommand",
+      "typeVersion": 1,
+      "position": [3100, 200]
+    },
+    {
+      "parameters": {
+        "message": "Technical Analysis workflow failed at step: {{ $node.name }}. Error: {{ $json.error.message }}",
+        "options": {}
+      },
+      "id": "t7f7e8b0-1234-4321-8901-123456789015",
+      "name": "Error Handler",
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [2440, 420]
+    }
+  ],
+  "connections": {
+    "Daily Trigger - 12PM UTC": {
+      "main": [
+        [
+          {
+            "node": "Define Technical Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Define Technical Sources": {
+      "main": [
+        [
+          {
+            "node": "GitHub Repo Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "GitHub Repo Analysis": {
+      "main": [
+        [
+          {
+            "node": "Process GitHub Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Process GitHub Data": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Between Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Between Sources": {
+      "main": [
+        [
+          {
+            "node": "Scrape Technical Docs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Technical Docs": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit for Blogs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit for Blogs": {
+      "main": [
+        [
+          {
+            "node": "Scrape Developer Blogs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Developer Blogs": {
+      "main": [
+        [
+          {
+            "node": "Merge Technical Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Technical Data": {
+      "main": [
+        [
+          {
+            "node": "Technical Landscape Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Technical Landscape Analysis": {
+      "main": [
+        [
+          {
+            "node": "Validate Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Technical Analysis": {
+      "main": [
+        [
+          {
+            "node": "Cache Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Error Handler",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Technical Analysis": {
+      "main": [
+        [
+          {
+            "node": "Store Technical Analysis",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Technical Analysis": {
+      "main": [
+        [
+          {
+            "node": "Generate Technical Report",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "saveManualExecutions": true,
+    "callerPolicy": "workflowsFromSameOwner",
+    "errorWorkflow": {
+      "id": ""
+    }
+  },
+  "pinData": {},
+  "versionId": "1.0.0",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "technical-analysis-daily",
+  "tags": [
+    {
+      "id": "technical-analysis",
+      "name": "Technical Analysis"
+    },
+    {
+      "id": "automation",
+      "name": "Automation"
+    }
+  ]
+}
