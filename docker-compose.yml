@@ -118,7 +118,7 @@ services:
     container_name: internal-proxy
     restart: unless-stopped
     ports:
-      - "81:80"
+      - "5678:80"
     networks:
       - automation_network
     depends_on:
