@@ -1,11 +1,8 @@
 services:
-  # Your existing n8n setup (keep as-is)
   n8n:
     image: n8nio/n8n:latest
     container_name: n8n
     restart: always
-    ports:
-      - "5678:5678"
     environment:
       - N8N_PORT=5678
       - NODE_ENV=production
@@ -28,7 +25,6 @@ services:
     networks:
       - automation_network
 
-  # Your existing postgres
   postgres:
     image: postgres:15
     container_name: postgres
@@ -46,7 +42,6 @@ services:
     labels:
       - "traefik.enable=false"
 
-  # Redis for caching/queuing data aggregation
   redis:
     image: redis:7-alpine
     container_name: redis
@@ -59,7 +54,6 @@ services:
     labels:
       - "traefik.enable=false"
 
-  # RSS/Feed aggregator
   miniflux:
     image: miniflux/miniflux:latest
     container_name: miniflux
@@ -77,13 +71,12 @@ services:
     networks:
       - automation_network
 
-  # Crawl4AI - AI-powered web scraper (trending #1 on GitHub)
   crawl4ai:
     image: unclecode/crawl4ai:latest
     container_name: crawl4ai
     restart: unless-stopped
     ports:
-      - "11235:11235"  # API server
+      - "11235:11235"
     environment:
       - CRAWL4AI_API_TOKEN=${CRAWL4AI_TOKEN:-your-secret-token}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-your-default-password}@redis:6379
@@ -94,7 +87,6 @@ services:
     networks:
       - automation_network
 
-  # Scraperr - Self-hosted webscraper with web UI
   scraperr:
     image: jpyles0524/scraperr:latest
     container_name: scraperr
@@ -112,7 +104,6 @@ services:
       - automation_network
     command: ["yarn", "start"]
 
-  # Scrapper - REST API scraper with headless browser
   scrapper:
     image: amerkurev/scrapper:latest
     container_name: scrapper
@@ -125,20 +116,6 @@ services:
       - scrapper_data:/app/data
     networks:
       - automation_network
-
-volumes:
-  n8n_data:
-    name: n8n_data
-  postgres_data:
-    name: postgres_data
-  redis_data:
-    name: redis_data
-  crawl4ai_data:
-    name: crawl4ai_data
-  scraperr_data:
-    name: scraperr_data
-  scrapper_data:
-    name: scrapper_data
 
   internal-proxy:
     image: nginx:latest
@@ -156,6 +133,20 @@ volumes:
       - crawl4ai
       - scraperr
       - scrapper
+
+volumes:
+  n8n_data:
+    name: n8n_data
+  postgres_data:
+    name: postgres_data
+  redis_data:
+    name: redis_data
+  crawl4ai_data:
+    name: crawl4ai_data
+  scraperr_data:
+    name: scraperr_data
+  scrapper_data:
+    name: scrapper_data
 
 networks:
   automation_network:
