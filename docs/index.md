@@ -15,4 +15,4 @@ This stack includes the following services:
 *   [Scrapper](scrapper.md)
 *   [Postgres](postgres.md)
 *   [Redis](redis.md)
-*   [Reverse Proxy](reverse-proxy.md)
+*   [Nginx Proxy Manager Setup](nginx-proxy-setup.md)
