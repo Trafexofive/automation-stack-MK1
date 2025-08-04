@@ -11,7 +11,7 @@ This document explains how to configure your existing Nginx Proxy Manager (NPM) 
     *   **Domain Name:** `automation.assisteo.ooguy.com` (or your desired domain)
     *   **Scheme:** `http`
     *   **Forward Hostname / IP:** The IP address of your Docker host (e.g., `192.168.1.100`) or `localhost` if NPM is running on the same machine.
-    *   **Forward Port:** `81`
+    *   **Forward Port:** `5678`
 
 Once this is configured, you will be able to access the services at the following URLs:
 
