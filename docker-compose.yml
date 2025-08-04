@@ -59,6 +59,7 @@ services:
     container_name: miniflux
     restart: unless-stopped
     environment:
+      - BASE_URL=https://automation.assisteo.ooguy.com/miniflux/
       - DATABASE_URL=postgres://miniflux:${MINIFLUX_PASS:-miniflux}@postgres/miniflux?sslmode=disable
       - RUN_MIGRATIONS=1
       - CREATE_ADMIN=1
