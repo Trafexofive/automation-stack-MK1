@@ -3,8 +3,6 @@ services:
     image: n8nio/n8n:latest
     container_name: n8n
     restart: always
-    ports:
-      - "5678:5678"
     environment:
       - N8N_PORT=5678
       - NODE_ENV=production
@@ -18,8 +16,9 @@ services:
       - EXECUTIONS_PROCESS=main
       - EXECUTIONS_MODE=regular
       - GENERIC_TIMEZONE=UTC
+      - N8N_EDITOR_BASE_URL=https://automation.assisteo.ooguy.com/n8n/
       - N8N_SECURE_COOKIE=false
-      - WEBHOOK_URL=https://${N8N_DOMAIN:-n8n.yourdomain.com}/
+      - WEBHOOK_URL=https://automation.assisteo.ooguy.com/n8n/
     volumes:
       - n8n_data:/home/node/.n8n
     depends_on:
@@ -61,13 +60,12 @@ services:
     container_name: miniflux
     restart: unless-stopped
     environment:
+      - BASE_URL=https://automation.assisteo.ooguy.com/miniflux/
       - DATABASE_URL=postgres://miniflux:${MINIFLUX_PASS:-miniflux}@postgres/miniflux?sslmode=disable
       - RUN_MIGRATIONS=1
       - CREATE_ADMIN=1
       - ADMIN_USERNAME=admin
       - ADMIN_PASSWORD=${MINIFLUX_ADMIN_PASS:-admin123}
-    ports:
-      - "8080:8080"
     depends_on:
       - postgres
     networks:
@@ -77,8 +75,6 @@ services:
     image: unclecode/crawl4ai:latest
     container_name: crawl4ai
     restart: unless-stopped
-    ports:
-      - "11235:11235"
     environment:
       - CRAWL4AI_API_TOKEN=${CRAWL4AI_TOKEN:-your-secret-token}
       - REDIS_URL=redis://:${REDIS_PASSWORD:-your-default-password}@redis:6379
@@ -93,8 +89,6 @@ services:
     image: jpyles0524/scraperr:latest
     container_name: scraperr
     restart: unless-stopped
-    ports:
-      - "8001:8000"
     environment:
       - DATABASE_URL=sqlite:///app/scraperr.db
       - REDIS_URL=redis://:${REDIS_PASSWORD:-your-default-password}@redis:6379
@@ -110,14 +104,29 @@ services:
     image: amerkurev/scrapper:latest
     container_name: scrapper
     restart: unless-stopped
-    ports:
-      - "3002:3000"
     environment:
       - NODE_ENV=production
     volumes:
       - scrapper_data:/app/data
     networks:
       - automation_network
+
+  internal-proxy:
+    build:
+      context: .
+      dockerfile: proxy.dockerfile
+    container_name: internal-proxy
+    restart: unless-stopped
+    ports:
+      - "81:80"
+    networks:
+      - automation_network
+    depends_on:
+      - n8n
+      - miniflux
+      - crawl4ai
+      - scraperr
+      - scrapper
 
 volumes:
   n8n_data:
